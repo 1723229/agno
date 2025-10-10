@@ -31,6 +31,13 @@ def get_entrypoint_for_tool(tool: MCPTool, session: ClientSession):
 
     async def call_tool(agent: Agent, tool_name: str, **kwargs) -> ToolResult:
         try:
+            # 额外补充apexToken，问知问数需要
+            from app.config import MCPConfig
+            kwargs.update(
+                {
+                    "apexToken": MCPConfig.APEX_TOKEN
+                }
+            )
             log_debug(f"Calling MCP Tool '{tool_name}' with args: {kwargs}")
             result: CallToolResult = await session.call_tool(tool_name, kwargs)  # type: ignore
 
