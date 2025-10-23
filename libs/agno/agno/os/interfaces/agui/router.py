@@ -20,7 +20,7 @@ from agno.os.interfaces.agui.utils import (
 from agno.team.team import Team
 # Import dynamic routing services
 from app.agents.router.router_service import AgentRouterService
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
@@ -104,13 +104,21 @@ def attach_routes(router: APIRouter, agent: Optional[Agent] = None, team: Option
     encoder = EventEncoder()
 
     @router.post("/agui")
-    async def run_agent_agui(run_input: RunAgentInput):
+    async def run_agent_agui(run_input: RunAgentInput, request: Request):
         async def event_generator():
             # Dynamic routing logic
-            # 1. Extract user_id from forwarded_props
-            # user_id = None
-            # if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
-            #     user_id = run_input.forwarded_props.get("user_id")
+            # 1. Extract user_id from JWT (injected by JWTMiddleware into request.state)
+            # user_id = getattr(request.state, "user_id", None)
+            #
+            # if not user_id:
+            #     # Fallback: try to get from forwarded_props
+            #     if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
+            #         user_id = run_input.forwarded_props.get("user_id")
+            #
+            # if not user_id:
+            #     logger.error("user_id not found in JWT token or forwarded_props")
+            #     yield RunErrorEvent(type=EventType.RUN_ERROR, message="user_id not found in JWT token")
+            #     return
 
             user_id = "1"
 
