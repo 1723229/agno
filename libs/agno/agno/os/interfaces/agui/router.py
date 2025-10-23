@@ -12,21 +12,16 @@ from ag_ui.core import (
     RunStartedEvent,
 )
 from ag_ui.encoder import EventEncoder
-from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
-
 from agno.agent.agent import Agent
 from agno.os.interfaces.agui.utils import (
     async_stream_agno_response_as_agui_events,
     convert_agui_messages_to_agno_messages,
 )
 from agno.team.team import Team
-
 # Import dynamic routing services
 from app.agents.router.router_service import AgentRouterService
-from app.agents.router.conversation_service import ConversationService
-from app.agents.router.agent_factory import AgentFactory
-from app.config import AgentRouterConfig
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -104,74 +99,37 @@ async def run_team(team: Team, input: RunAgentInput) -> AsyncIterator[BaseEvent]
 def attach_routes(router: APIRouter, agent: Optional[Agent] = None, team: Optional[Team] = None) -> APIRouter:
     # Agent and team are optional for dynamic routing
     # Initialize dynamic routing services
-    agent_router_service = AgentRouterService(
-        similarity_threshold=AgentRouterConfig.SIMILARITY_THRESHOLD,
-        cache_ttl=AgentRouterConfig.CACHE_TTL
-    )
-    conversation_service = ConversationService(
-        timeout=AgentRouterConfig.CONVERSATION_TIMEOUT,
-        history_rounds=AgentRouterConfig.HISTORY_ROUNDS
-    )
-    agent_factory = AgentFactory()
+    agent_router_service = AgentRouterService()
 
     encoder = EventEncoder()
 
     @router.post("/agui")
     async def run_agent_agui(run_input: RunAgentInput):
         async def event_generator():
-                # Dynamic routing logic
-                # 1. Extract user_id from forwarded_props
-                # user_id = None
-                # if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
-                #     user_id = run_input.forwarded_props.get("user_id")
+            # Dynamic routing logic
+            # 1. Extract user_id from forwarded_props
+            # user_id = None
+            # if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
+            #     user_id = run_input.forwarded_props.get("user_id")
 
-                user_id = "1"
+            user_id = "1"
 
-                # 2. Extract user message from messages
-                messages = convert_agui_messages_to_agno_messages(run_input.messages or [])
-                if not messages:
-                    yield RunErrorEvent(type=EventType.RUN_ERROR, message="No messages provided")
-                    return
+            user_content = ""
+            if run_input.messages:
+                for message in reversed(run_input.messages):
+                    if hasattr(message, 'role') and message.role == 'user':
+                        user_content = message.content
+                        break
 
-                # Get the last user message content
-                last_message = messages[-1] if messages else ""
-                user_message = last_message.content if hasattr(last_message, 'content') else str(last_message)
+            # 使用统一的路由和创建逻辑
+            dynamic_agent, agent_id, similarity_score, is_fallback, is_followup = await agent_router_service.route_and_create_agent(
+                user_id=user_id,
+                user_message=user_content
+            )
 
-                # 3. Get conversation history
-                history = conversation_service.get_conversation_history(
-                    user_id=user_id,
-                    limit=AgentRouterConfig.HISTORY_ROUNDS
-                )
-
-                # 4. Check if followup question
-                is_followup, last_agent_id = await conversation_service.is_followup_question(
-                    current_question=user_message,
-                    history=history
-                )
-
-                if is_followup and last_agent_id:
-                    agent_id = last_agent_id
-                    logger.info(f"Follow-up detected, using agent: {agent_id}")
-                else:
-                    agent_id, similarity_score = agent_router_service.find_best_agent(
-                        user_question=user_message
-                    )
-                    logger.info(f"Best matching agent: {agent_id}, similarity: {similarity_score:.4f}")
-
-                # 6. Create agent dynamically
-                if agent_id:
-                    dynamic_agent = agent_factory.create_agent_by_id(
-                        agent_id=agent_id,
-                        user_id=user_id
-                    )
-                else:
-                    # Use fallback general agent
-                    dynamic_agent = agent_factory.create_general_agent(user_id=user_id)
-                    logger.info("Using fallback general agent")
-
-                async for event in run_agent(dynamic_agent, run_input):
-                    encoded_event = encoder.encode(event)
-                    yield encoded_event
+            async for event in run_agent(dynamic_agent, run_input):
+                encoded_event = encoder.encode(event)
+                yield encoded_event
 
         return StreamingResponse(
             event_generator(),
