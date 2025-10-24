@@ -41,11 +41,19 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
         if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
             user_id = run_input.forwarded_props.get("user_id")
 
+        # Extract the last user message
+        current_question = ""
+        for message in reversed(messages):
+            if hasattr(message, 'role') and message.role == 'user':
+                current_question = getattr(message, 'content', '')
+                break
+
         agent_router_service = AgentRouterService()
 
         agent = await agent_router_service.route_and_create_agent(
             user_id=user_id,
-            messages=messages
+            session_id=run_input.thread_id,
+            user_message=current_question
         )
 
         # Request streaming response from agent
