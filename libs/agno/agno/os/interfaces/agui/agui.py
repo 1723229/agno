@@ -39,6 +39,7 @@ class AGUI(BaseInterface):
         # if not (self.agent or self.team):
         #     raise ValueError("AGUI requires an agent or a team")
 
+
     def get_router(self) -> APIRouter:
         self.router = APIRouter(prefix=self.prefix, tags=self.tags)  # type: ignore
 
