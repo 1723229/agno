@@ -12,16 +12,17 @@ from ag_ui.core import (
     RunStartedEvent,
 )
 from ag_ui.encoder import EventEncoder
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
+
 from agno.agent.agent import Agent
 from agno.os.interfaces.agui.utils import (
     async_stream_agno_response_as_agui_events,
     convert_agui_messages_to_agno_messages,
 )
 from agno.team.team import Team
-# Import dynamic routing services
+
 from app.agents.router.router_service import AgentRouterService
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +41,26 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
         if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
             user_id = run_input.forwarded_props.get("user_id")
 
+        user_content = ""
+        if run_input.messages:
+            for message in reversed(run_input.messages):
+                if hasattr(message, 'role') and message.role == 'user':
+                    user_content = message.content
+                    break
+
+        agent_router_service = AgentRouterService()
+
+        agent = await agent_router_service.route_and_create_agent(
+            user_id=user_id,
+            user_message=user_content
+        )
+
         # Request streaming response from agent
         response_stream = agent.arun(
             input=messages,
             session_id=run_input.thread_id,
             stream=True,
-            stream_intermediate_steps=True,
+            stream_events=True,
             user_id=user_id,
         )
 
@@ -97,9 +112,8 @@ async def run_team(team: Team, input: RunAgentInput) -> AsyncIterator[BaseEvent]
 
 
 def attach_routes(router: APIRouter, agent: Optional[Agent] = None, team: Optional[Team] = None) -> APIRouter:
-    # Agent and team are optional for dynamic routing
-    # Initialize dynamic routing services
-    agent_router_service = AgentRouterService()
+    # if agent is None and team is None:
+    #     raise ValueError("Either agent or team must be provided.")
 
     encoder = EventEncoder()
 
@@ -107,40 +121,11 @@ def attach_routes(router: APIRouter, agent: Optional[Agent] = None, team: Option
         "/agui",
         name="run_agent",
     )
-    async def run_agent_agui(run_input: RunAgentInput, request: Request):
+    async def run_agent_agui(run_input: RunAgentInput):
         async def event_generator():
-            # Dynamic routing logic
-            # 1. Extract user_id from JWT (injected by JWTMiddleware into request.state)
-            # user_id = getattr(request.state, "user_id", None)
-            #
-            # if not user_id:
-            #     # Fallback: try to get from forwarded_props
-            #     if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
-            #         user_id = run_input.forwarded_props.get("user_id")
-            #
-            # if not user_id:
-            #     logger.error("user_id not found in JWT token or forwarded_props")
-            #     yield RunErrorEvent(type=EventType.RUN_ERROR, message="user_id not found in JWT token")
-            #     return
-
-            user_id = "1"
-
-            user_content = ""
-            if run_input.messages:
-                for message in reversed(run_input.messages):
-                    if hasattr(message, 'role') and message.role == 'user':
-                        user_content = message.content
-                        break
-
-            # 使用统一的路由和创建逻辑
-            dynamic_agent, agent_id, similarity_score, is_fallback, is_followup = await agent_router_service.route_and_create_agent(
-                user_id=user_id,
-                user_message=user_content
-            )
-
-            async for event in run_agent(dynamic_agent, run_input):
-                encoded_event = encoder.encode(event)
-                yield encoded_event
+            async for event in run_agent(agent, run_input):
+                    encoded_event = encoder.encode(event)
+                    yield encoded_event
 
         return StreamingResponse(
             event_generator(),
