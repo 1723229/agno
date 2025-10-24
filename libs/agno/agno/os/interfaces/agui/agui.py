@@ -36,7 +36,8 @@ class AGUI(BaseInterface):
         self.prefix = prefix
         self.tags = tags or ["AGUI"]
 
-        # Agent and team are optional for dynamic routing
+        if not (self.agent or self.team):
+            raise ValueError("AGUI requires an agent or a team")
 
     def get_router(self) -> APIRouter:
         self.router = APIRouter(prefix=self.prefix, tags=self.tags)  # type: ignore
