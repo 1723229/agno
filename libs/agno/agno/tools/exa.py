@@ -140,13 +140,14 @@ class ExaTools(Toolkit):
                 if self.text_length_limit:
                     _text = _text[: self.text_length_limit]
                 result_dict["text"] = _text
-            if self.highlights:
-                try:
-                    if result.highlights:  # type: ignore
-                        result_dict["highlights"] = result.highlights  # type: ignore
-                except Exception as e:
-                    log_debug(f"Failed to get highlights {e}")
-                    result_dict["highlights"] = f"Failed to get highlights {e}"
+            # 移除highlights处理，因为Exa API不支持此参数
+            # if self.highlights:
+            #     try:
+            #         if result.highlights:  # type: ignore
+            #             result_dict["highlights"] = result.highlights  # type: ignore
+            #     except Exception as e:
+            #         log_debug(f"Failed to get highlights {e}")
+            #         result_dict["highlights"] = f"Failed to get highlights {e}"
             exa_results_parsed.append(result_dict)
         return json.dumps(exa_results_parsed, indent=4, ensure_ascii=False)
 
@@ -168,7 +169,7 @@ class ExaTools(Toolkit):
                 log_info(f"Searching exa for: {query}")
             search_kwargs: Dict[str, Any] = {
                 "text": self.text,
-                "highlights": self.highlights,
+                # "highlights": self.highlights,  # 移除highlights参数，Exa API不支持
                 "summary": self.summary,
                 "num_results": self.num_results or num_results,
                 "start_crawl_date": self.start_crawl_date,
@@ -212,7 +213,7 @@ class ExaTools(Toolkit):
 
         query_kwargs: Dict[str, Any] = {
             "text": self.text,
-            "highlights": self.highlights,
+            # "highlights": self.highlights,  # 移除highlights参数，Exa API不支持
             "summary": self.summary,
         }
 
@@ -249,7 +250,7 @@ class ExaTools(Toolkit):
 
         query_kwargs: Dict[str, Any] = {
             "text": self.text,
-            "highlights": self.highlights,
+            # "highlights": self.highlights,  # 移除highlights参数，Exa API不支持
             "summary": self.summary,
             "include_domains": self.include_domains,
             "exclude_domains": self.exclude_domains,
