@@ -757,10 +757,21 @@ class Team:
             member.team_id = self.id
             member.set_id()
 
+            # Inherit team models if agent has no explicit model
+            for model_type in ["model", "reasoning_model", "parser_model", "output_model"]:
+                if getattr(member, model_type) is None and getattr(self, model_type) is not None:
+                    setattr(member, model_type, getattr(self, model_type))
+                    log_info(
+                        f"Agent '{member.name or member.id}' inheriting {model_type} from Team: {getattr(self, model_type).id}"
+                    )
+
         elif isinstance(member, Team):
             member.parent_team_id = self.id
+            # Initialize the sub-team's model first so it has its model set
+            member._set_default_model()
+            # Then let the sub-team initialize its own members so they inherit from the sub-team
             for sub_member in member.members:
-                self._initialize_member(sub_member, debug_mode=debug_mode)
+                member._initialize_member(sub_member, debug_mode=debug_mode)
 
     def _set_default_model(self) -> None:
         # Set the default model
@@ -3379,7 +3390,7 @@ class Team:
         self._update_session_metrics(session=session)
 
         # Save session to memory
-        self.save_session(session=session)
+        await self.asave_session(session=session)
 
     def _make_memories(
         self,
@@ -6751,6 +6762,11 @@ class Team:
             # 1. Initialize the member agent
             self._initialize_member(member_agent)
 
+            # If team has send_media_to_model=False, ensure member agent also has it set to False
+            # This allows tools to access files while preventing models from receiving them
+            if not self.send_media_to_model:
+                member_agent.send_media_to_model = False
+
             # 2. Handle respond_directly nuances
             if self.respond_directly:
                 # Since we return the response directly from the member agent, we need to set the output schema from the team down.
@@ -6880,6 +6896,7 @@ class Team:
             use_agent_logger()
 
             member_session_state_copy = copy(session_state)
+
             if stream:
                 member_agent_run_response_stream = member_agent.run(
                     input=member_agent_task if not history else history,
@@ -7006,6 +7023,7 @@ class Team:
             use_agent_logger()
 
             member_session_state_copy = copy(session_state)
+
             if stream:
                 member_agent_run_response_stream = member_agent.arun(  # type: ignore
                     input=member_agent_task if not history else history,
@@ -7310,6 +7328,7 @@ class Team:
 
                     async def run_member_agent(agent=current_agent) -> str:
                         member_session_state_copy = copy(session_state)
+
                         member_agent_run_response = await agent.arun(
                             input=member_agent_task if not history else history,
                             user_id=user_id,
