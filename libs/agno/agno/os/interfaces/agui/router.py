@@ -27,7 +27,6 @@ from app.agents.router.router_service import AgentRouterService
 
 logger = logging.getLogger(__name__)
 
-
 async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[BaseEvent]:
     """Run the contextual Agent, mapping AG-UI input messages to Agno format, and streaming the response in AG-UI format."""
     run_id = run_input.run_id or str(uuid.uuid4())
