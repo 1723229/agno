@@ -23,6 +23,8 @@ from agno.os.interfaces.agui.utils import (
 )
 from agno.team.team import Team
 
+from app.agents.router.router_service import AgentRouterService
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,6 +41,21 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
         user_id = None
         if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
             user_id = run_input.forwarded_props.get("user_id")
+
+        # Extract the last user message
+        current_question = ""
+        for message in reversed(messages):
+            if hasattr(message, 'role') and message.role == 'user':
+                current_question = getattr(message, 'content', '')
+                break
+
+        agent_router_service = AgentRouterService()
+
+        agent = await agent_router_service.route_and_create_agent(
+            user_id=user_id,
+            session_id=run_input.thread_id,
+            user_message=current_question
+        )
 
         # Validating the session state is of the expected type (dict)
         session_state = validate_agui_state(run_input.state, run_input.thread_id)
@@ -105,8 +122,8 @@ async def run_team(team: Team, input: RunAgentInput) -> AsyncIterator[BaseEvent]
 
 
 def attach_routes(router: APIRouter, agent: Optional[Agent] = None, team: Optional[Team] = None) -> APIRouter:
-    if agent is None and team is None:
-        raise ValueError("Either agent or team must be provided.")
+    # if agent is None and team is None:
+    #     raise ValueError("Either agent or team must be provided.")
 
     encoder = EventEncoder()
 
@@ -116,12 +133,7 @@ def attach_routes(router: APIRouter, agent: Optional[Agent] = None, team: Option
     )
     async def run_agent_agui(run_input: RunAgentInput):
         async def event_generator():
-            if agent:
-                async for event in run_agent(agent, run_input):
-                    encoded_event = encoder.encode(event)
-                    yield encoded_event
-            elif team:
-                async for event in run_team(team, run_input):
+            async for event in run_agent(agent, run_input):
                     encoded_event = encoder.encode(event)
                     yield encoded_event
 
