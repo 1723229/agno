@@ -36,10 +36,10 @@ def get_entrypoint_for_tool(tool: MCPTool, session: ClientSession):
 
         try:
             # 额外补充apexToken，问知问数需要
-            from app.config import MCPConfig
+            from app.config import ApexConfig
             kwargs.update(
                 {
-                    "apexToken": MCPConfig.APEX_TOKEN
+                    "apexToken": ApexConfig.APEX_TOKEN
                 }
             )
             log_debug(f"Calling MCP Tool '{tool_name}' with args: {kwargs}")
