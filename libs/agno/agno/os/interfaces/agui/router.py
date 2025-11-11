@@ -38,10 +38,20 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
 
         # Look for user_id and file_ids in run_input.forwarded_props
         user_id = None
-        file_ids = None
         if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
             user_id = run_input.forwarded_props.get("user_id")
             file_ids = run_input.forwarded_props.get("file_ids")  # 获取选中的文件IDs
+            access_token = run_input.forwarded_props.get("access_token")
+
+            # 将 file_ids 和 access_token 设置到请求上下文中（供 MCP 工具等使用）
+            from app.utils.request_context import RequestContext
+
+            if file_ids is not None:
+                RequestContext.set_file_ids(file_ids)
+                logger.info(f"Set file_ids to request context: {file_ids}")
+            if access_token is not None:
+                RequestContext.set_access_token(access_token)
+                logger.info(f"Set access_token to request context from forwarded_props")
 
         # Extract the last user message
         current_question = ""
@@ -60,11 +70,6 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
 
         # Validating the session state is of the expected type (dict)
         session_state = validate_agui_state(run_input.state, run_input.thread_id)
-
-        # 将file_ids添加到session_state中，以便agent可以访问
-        if file_ids is not None:
-            session_state['file_ids'] = file_ids
-            logger.info(f"Selected file_ids for agent: {file_ids}")
 
         # Request streaming response from agent
         response_stream = agent.arun(

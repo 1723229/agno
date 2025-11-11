@@ -36,12 +36,19 @@ def get_entrypoint_for_tool(tool: MCPTool, session: ClientSession):
 
         try:
             # 额外补充apexToken，问知问数需要
-            from app.config import ApexConfig
-            kwargs.update(
-                {
-                    "apexToken": ApexConfig.APEX_TOKEN
-                }
-            )
+            # 从请求上下文获取当前用户的 access_token（由认证中间件设置）
+            from app.utils.request_context import RequestContext
+            apex_token = RequestContext.get_access_token()
+            file_ids = RequestContext.get_file_ids()
+
+            if apex_token:
+                kwargs.update({"apexToken": apex_token})
+                log_debug(f"Using access_token from request context")
+
+            if file_ids:
+                kwargs.update({"folderFileIds": file_ids})
+                log_debug(f"Using file_ids from request context")
+
             log_debug(f"Calling MCP Tool '{tool_name}' with args: {kwargs}")
             result: CallToolResult = await session.call_tool(tool_name, kwargs)  # type: ignore
 
