@@ -38,6 +38,7 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
 
         # Look for user_id and file_ids in run_input.forwarded_props
         user_id = None
+        has_file_ids = False
         if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
             user_id = run_input.forwarded_props.get("user_id")
             file_ids = run_input.forwarded_props.get("file_ids")  # 获取选中的文件IDs
@@ -47,11 +48,24 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
             from app.utils.request_context import RequestContext
 
             if file_ids is not None:
+                # 将 List[int] 转换为 List[str]
+                if isinstance(file_ids, list):
+                    file_ids = [str(fid) for fid in file_ids]
                 RequestContext.set_file_ids(file_ids)
+                has_file_ids = True
                 logger.info(f"Set file_ids to request context: {file_ids}")
             if access_token is not None:
                 RequestContext.set_access_token(access_token)
                 logger.info(f"Set access_token to request context from forwarded_props")
+
+        # 如果有 file_ids，在最新的用户消息中补充知识库提示
+        if has_file_ids and messages:
+            for message in reversed(messages):
+                if hasattr(message, 'role') and message.role == 'user':
+                    original_content = getattr(message, 'content', '')
+                    message.content = f"{original_content}\n 补充说明：优先基于知识库检索工具回答"
+                    logger.info(f"Added knowledge base hint to user message")
+                    break
 
         # Extract the last user message
         current_question = ""
