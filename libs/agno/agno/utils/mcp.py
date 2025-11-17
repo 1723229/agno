@@ -59,8 +59,6 @@ def get_entrypoint_for_tool(tool: MCPTool, session: ClientSession):
             if result.isError:
                 return ToolResult(content=f"Error from MCP tool '{tool_name}': {result.content}")
 
-            print(f"result:::{result}")
-
             # Process the result content
             response_str = ""
             images = []
@@ -142,7 +140,6 @@ def get_entrypoint_for_tool(tool: MCPTool, session: ClientSession):
                     from app.service.base_service import BaseService
                     base_service = BaseService()
                     response_str = await base_service.replace_knowledge_tags(response_str)
-                    print(f"resuresponse_str:::{response_str}")
                     log_debug("Successfully replaced knowledge tags in response")
                 except Exception as e:
                     log_exception(f"Failed to replace knowledge tags: {e}")

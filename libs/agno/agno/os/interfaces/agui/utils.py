@@ -3,7 +3,7 @@
 import json
 import uuid
 from collections.abc import Iterator
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple, Union
 
 from ag_ui.core import (
@@ -68,18 +68,13 @@ def validate_agui_state(state: Any, thread_id: str) -> Optional[Dict[str, Any]]:
 class EventBuffer:
     """Buffer to manage event ordering constraints, relevant when mapping Agno responses to AG-UI events."""
 
-    active_tool_call_ids: Set[str]  # All currently active tool calls
-    ended_tool_call_ids: Set[str]  # All tool calls that have ended
+    active_tool_call_ids: Set[str] = field(default_factory=set)  # All currently active tool calls
+    ended_tool_call_ids: Set[str] = field(default_factory=set)  # All tool calls that have ended
     current_text_message_id: str = ""  # ID of the current text message context (for tool call parenting)
-    next_text_message_id: str = ""  # Pre-generated ID for the next text message
+    next_text_message_id: str = field(default_factory=lambda: str(uuid.uuid4()))  # Pre-generated ID for the next text message
     pending_tool_calls_parent_id: str = ""  # Parent message ID for pending tool calls
-
-    def __init__(self):
-        self.active_tool_call_ids = set()
-        self.ended_tool_call_ids = set()
-        self.current_text_message_id = ""
-        self.next_text_message_id = str(uuid.uuid4())
-        self.pending_tool_calls_parent_id = ""
+    pending_tool_call_events: List[Tuple[str, List[BaseEvent]]] = field(default_factory=list)  # Buffered tool call events (tool_call_id, events)
+    pending_result_events: Dict[str, BaseEvent] = field(default_factory=dict)  # Buffered result events (tool_call_id -> result_event)
 
     def start_tool_call(self, tool_call_id: str) -> None:
         """Start a new tool call."""
@@ -89,6 +84,28 @@ class EventBuffer:
         """End a tool call."""
         self.active_tool_call_ids.discard(tool_call_id)
         self.ended_tool_call_ids.add(tool_call_id)
+
+    def has_active_tool_call(self) -> bool:
+        """Check if there's currently an active tool call."""
+        return len(self.active_tool_call_ids) > 0
+
+    def buffer_tool_call_events(self, tool_call_id: str, events: List[BaseEvent]) -> None:
+        """Buffer tool call events to be emitted later."""
+        self.pending_tool_call_events.append((tool_call_id, events))
+
+    def get_next_buffered_tool_call(self) -> Optional[Tuple[str, List[BaseEvent]]]:
+        """Get the next buffered tool call events if any."""
+        if self.pending_tool_call_events:
+            return self.pending_tool_call_events.pop(0)
+        return None
+
+    def buffer_result_event(self, tool_call_id: str, event: BaseEvent) -> None:
+        """Buffer a result event to be emitted after TOOL_CALL_END."""
+        self.pending_result_events[tool_call_id] = event
+
+    def get_buffered_result_event(self, tool_call_id: str) -> Optional[BaseEvent]:
+        """Get and remove a buffered result event."""
+        return self.pending_result_events.pop(tool_call_id, None)
 
     def start_text_message(self) -> str:
         """Start a new text message and return its ID."""
@@ -258,14 +275,21 @@ def _create_events_from_chunk(
                 tool_call_name=tool_call.tool_name,  # type: ignore
                 parent_message_id=parent_message_id,
             )
-            events_to_emit.append(start_event)
 
             args_event = ToolCallArgsEvent(
                 type=EventType.TOOL_CALL_ARGS,
                 tool_call_id=tool_call.tool_call_id,  # type: ignore
                 delta=json.dumps(tool_call.tool_args),
             )
-            events_to_emit.append(args_event)  # type: ignore
+
+            # Check if there's already an active tool call
+            # If so, buffer these events to be emitted after the current tool call ends
+            if event_buffer.has_active_tool_call():
+                event_buffer.buffer_tool_call_events(tool_call.tool_call_id, [start_event, args_event])
+            else:
+                # No active tool call, emit immediately
+                events_to_emit.append(start_event)
+                events_to_emit.append(args_event)  # type: ignore
 
     # Handle tool call completion
     elif chunk.event == RunEvent.tool_call_completed or chunk.event == TeamRunEvent.tool_call_completed:
@@ -278,6 +302,8 @@ def _create_events_from_chunk(
                 )
                 events_to_emit.append(end_event)
 
+                # Buffer the RESULT event to be sent AFTER TOOL_CALL_END is processed
+                # This ensures correct event order: START → END → RESULT
                 if tool_call.result is not None:
                     result_event = ToolCallResultEvent(
                         type=EventType.TOOL_CALL_RESULT,
@@ -286,7 +312,7 @@ def _create_events_from_chunk(
                         role="tool",
                         message_id=str(uuid.uuid4()),
                     )
-                    events_to_emit.append(result_event)
+                    event_buffer.buffer_result_event(tool_call.tool_call_id, result_event)
 
     # Handle reasoning
     elif chunk.event == RunEvent.reasoning_started:
@@ -413,6 +439,23 @@ def _emit_event_logic(event: BaseEvent, event_buffer: EventBuffer) -> List[BaseE
         tool_call_id = getattr(event, "tool_call_id", None)
         if tool_call_id:
             event_buffer.end_tool_call(tool_call_id)
+
+            # CRITICAL: Emit buffered RESULT event immediately after END
+            # This ensures correct ag-ui event order: START → END → RESULT
+            result_event = event_buffer.get_buffered_result_event(tool_call_id)
+            if result_event:
+                events_to_emit.append(result_event)
+
+        # After ending a tool call and emitting its result, check if there are buffered tool calls to emit
+        # This ensures sequential tool call execution (one at a time)
+        if not event_buffer.has_active_tool_call():
+            buffered = event_buffer.get_next_buffered_tool_call()
+            if buffered:
+                buffered_tool_call_id, buffered_events = buffered
+                # Add buffered events to the emission list
+                events_to_emit.extend(buffered_events)
+                # Mark this buffered tool call as now active
+                event_buffer.start_tool_call(buffered_tool_call_id)
 
     return events_to_emit
 
