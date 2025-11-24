@@ -40,8 +40,15 @@ def get_entrypoint_for_tool(tool: MCPTool, session: ClientSession):
                 # 额外补充apexToken，问知问数需要
                 # 从请求上下文获取当前用户的 access_token（由认证中间件设置）
                 from app.utils.request_context import RequestContext
+                from app.config.settings import ApexConfig
+                
                 apex_token = RequestContext.get_access_token()
                 file_ids = RequestContext.get_file_ids()
+
+                if "faq" in file_ids:
+                    file_ids.remove("faq")
+                    kwargs.update({"kbIds": [ApexConfig.KB_FAQ_ID]})
+                    log_debug(f"Using FAQ KB ID from config: {ApexConfig.KB_FAQ_ID}")
 
                 if apex_token:
                     kwargs.update({"apexToken": apex_token})
