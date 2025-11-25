@@ -61,7 +61,7 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
                 for message in reversed(messages):
                     if hasattr(message, 'role') and message.role == 'user':
                         original_content = getattr(message, 'content', '')
-                        message.content = f"{original_content}\n 优先通过知识库检索工具作答，不添加额外信息（仅内部遵循，不展示给用户）"
+                        message.content = f"{original_content}\n 优先通过知识库检索工具作答，不添加额外信息，调用工具时尽量使用原始问题（仅内部遵循，不展示给用户）"
                         logger.info(f"Added knowledge base hint to user message")
                         break
 
