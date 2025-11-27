@@ -32,10 +32,13 @@ print_info "VIRTUAL_ENV=${VENV_DIR} uv pip install -r ${AGNO_DIR}/requirements.t
 VIRTUAL_ENV=${VENV_DIR} uv pip install -r ${AGNO_DIR}/requirements.txt
 
 print_heading "Installing agno in editable mode with tests dependencies"
+# Install dev dependencies first (includes pytest-cov)
+VIRTUAL_ENV=${VENV_DIR} uv pip install -U -e ${AGNO_DIR}[dev]
+# Then install tests dependencies (includes all models, tools, etc.)
 VIRTUAL_ENV=${VENV_DIR} uv pip install -U -e ${AGNO_DIR}[tests]
 VIRTUAL_ENV=${VENV_DIR} uv pip install yfinance
 
-VIRTUAL_ENV=${VENV_DIR} uv pip install google-genai==1.17.0
+VIRTUAL_ENV=${VENV_DIR} uv pip install google-genai==1.52.0
 VIRTUAL_ENV=${VENV_DIR} uv pip install mcp==1.9.2
 VIRTUAL_ENV=${VENV_DIR} uv pip install fastmcp
 VIRTUAL_ENV=${VENV_DIR} uv pip install crawl4ai==0.6.3
