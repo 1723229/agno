@@ -16,6 +16,60 @@ from agno.media import Image
 from agno.tools.function import ToolResult
 
 
+# MCP工具名称中文映射表
+MCP_TOOL_NAME_ZH = {
+    # 知识库相关
+    "knowledge_retrieval": "知识库检索",
+    "knowledge_search": "知识库搜索",
+    "knowledge_query": "知识库查询",
+
+    # 数据分析相关
+    "data_agent": "数据分析助手",
+    "data_analysis": "数据分析",
+    "sql_query": "SQL查询",
+    "chart_generation": "图表生成",
+
+    # 文件操作相关
+    "file_read": "文件读取",
+    "file_write": "文件写入",
+    "file_search": "文件搜索",
+    "file_upload": "文件上传",
+
+    # 网络相关
+    "web_search": "网页搜索",
+    "web_scrape": "网页抓取",
+    "api_call": "API调用",
+
+    # 代码执行相关
+    "python_execute": "Python执行",
+    "code_run": "代码运行",
+    "shell_command": "Shell命令",
+
+    # 邮件相关
+    "email_send": "邮件发送",
+    "email_read": "邮件读取",
+
+    # 其他工具
+    "calculator": "计算器",
+    "translator": "翻译工具",
+    "image_generation": "图片生成",
+    "text_to_speech": "文字转语音",
+}
+
+
+def get_tool_display_name(tool_name: str) -> str:
+    """
+    获取工具的中文显示名称
+
+    Args:
+        tool_name: 工具的英文名称
+
+    Returns:
+        str: 中文名称（如果有映射）或原始英文名称
+    """
+    return MCP_TOOL_NAME_ZH.get(tool_name, tool_name)
+
+
 def get_entrypoint_for_tool(tool: MCPTool, session: ClientSession):
     """
     Return an entrypoint for an MCP tool.
@@ -60,12 +114,15 @@ def get_entrypoint_for_tool(tool: MCPTool, session: ClientSession):
                     log_debug(f"Using file_ids from request context")
 
 
-            log_debug(f"Calling MCP Tool '{tool_name}' with args: {kwargs}")
+            # 获取工具的中文显示名称
+            tool_display_name = get_tool_display_name(tool_name)
+
+            log_debug(f"Calling MCP Tool '{tool_display_name}' ({tool_name}) with args: {kwargs}")
             result: CallToolResult = await session.call_tool(tool_name, kwargs)  # type: ignore
 
             # Return an error if the tool call failed
             if result.isError:
-                return ToolResult(content=f"Error from MCP tool '{tool_name}': {result.content}")
+                return ToolResult(content=f"调用工具 '{tool_display_name}' 时出错: {result.content}")
 
             # Process the result content
             response_str = ""
@@ -158,10 +215,11 @@ def get_entrypoint_for_tool(tool: MCPTool, session: ClientSession):
                 images=images if images else None,
             )
         except Exception as e:
-            log_exception(f"Failed to call MCP tool '{tool_name}': {e}")
-            return ToolResult(content=f"Error: {e}")
+            tool_display_name = get_tool_display_name(tool_name)
+            log_exception(f"Failed to call MCP tool '{tool_display_name}' ({tool_name}): {e}")
+            return ToolResult(content=f"调用工具 '{tool_display_name}' 失败: {e}")
 
-    return partial(call_tool, tool_name=tool.name)
+    return partial(call_tool, tool_name=get_tool_display_name(tool.name))
 
 
 def prepare_command(command: str) -> list[str]:
