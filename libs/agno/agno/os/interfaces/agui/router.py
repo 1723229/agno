@@ -39,30 +39,35 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
 
         # Look for user_id and file_ids in run_input.forwarded_props
         user_id = None
+        use_general_agent =False
         if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
             user_id = run_input.forwarded_props.get("user_id")
-            file_ids = run_input.forwarded_props.get("file_ids")  # 获取选中的文件IDs
+            file_ids = run_input.forwarded_props.get("file_ids")
+            kb_id: Any | None = run_input.forwarded_props.get("kb_id")
             access_token = run_input.forwarded_props.get("access_token")
 
-            # 将 file_ids 和 access_token 设置到请求上下文中（供 MCP 工具等使用）
             from app.utils.request_context import RequestContext
 
             if file_ids is not None:
-                # 将 List[int] 转换为 List[str]
                 if isinstance(file_ids, list):
                     file_ids = [str(fid) for fid in file_ids]
                 RequestContext.set_file_ids(file_ids)
-                logger.info(f"Set file_ids to request context: {file_ids}")
+
+            if kb_id is not None:
+                # 确保 kb_id 是整数类型
+                kb_id_int = int(kb_id) if not isinstance(kb_id, int) else kb_id
+                RequestContext.set_kb_id(kb_id_int)
+
             if access_token is not None:
                 RequestContext.set_access_token(access_token)
-                logger.info(f"Set access_token to request context from forwarded_props")
 
             # 如果有 file_ids，在最新的用户消息中补充知识库提示
             if file_ids and messages:
                 for message in reversed(messages):
                     if hasattr(message, 'role') and message.role == 'user':
                         original_content = getattr(message, 'content', '')
-                        message.content = f"{original_content}\n 优先通过知识库检索工具作答，不添加额外信息，调用工具时尽量使用原始问题（仅内部遵循，不展示给用户）"
+                        message.content = f"{original_content}\n - 涉及文档查询类问题，优先通过知识库检索工具作答，仅使用原始问题调用工具（内部规则，不向用户展示），且不额外补充信息。"
+                        use_general_agent = True
                         logger.info(f"Added knowledge base hint to user message")
                         break
 
@@ -78,7 +83,8 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
         agent = await agent_router_service.route_and_create_agent(
             user_id=user_id,
             session_id=run_input.thread_id,
-            user_message=current_question
+            user_message=current_question,
+            use_general_agent=use_general_agent
         )
 
         # Validating the session state is of the expected type (dict)
