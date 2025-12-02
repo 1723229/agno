@@ -78,6 +78,8 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
                 current_question = getattr(message, 'content', '')
                 break
 
+        print(f"agent::::{agent}")
+
         agent_router_service = AgentRouterService()
 
         agent = await agent_router_service.route_and_create_agent(
