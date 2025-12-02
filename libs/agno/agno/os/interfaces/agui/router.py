@@ -70,24 +70,24 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
                         use_general_agent = True
                         logger.info(f"Added knowledge base hint to user message")
                         break
+        if agent is None:
+            logger.info(f"Agent {run_id} has no agent")
+            # Extract the last user message
+            current_question = ""
+            for message in reversed(messages):
+                if hasattr(message, 'role') and message.role == 'user':
+                    current_question = getattr(message, 'content', '')
+                    break
 
-        # Extract the last user message
-        current_question = ""
-        for message in reversed(messages):
-            if hasattr(message, 'role') and message.role == 'user':
-                current_question = getattr(message, 'content', '')
-                break
 
-        print(f"agent::::{agent}")
+            agent_router_service = AgentRouterService()
 
-        agent_router_service = AgentRouterService()
-
-        agent = await agent_router_service.route_and_create_agent(
-            user_id=user_id,
-            session_id=run_input.thread_id,
-            user_message=current_question,
-            use_general_agent=use_general_agent
-        )
+            agent = await agent_router_service.route_and_create_agent(
+                user_id=user_id,
+                session_id=run_input.thread_id,
+                user_message=current_question,
+                use_general_agent=use_general_agent
+            )
 
         # Validating the session state is of the expected type (dict)
         session_state = validate_agui_state(run_input.state, run_input.thread_id)
