@@ -12,9 +12,6 @@ from ag_ui.core import (
     RunStartedEvent,
 )
 from ag_ui.encoder import EventEncoder
-from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
-
 from agno.agent.agent import Agent
 from agno.os.interfaces.agui.utils import (
     async_stream_agno_response_as_agui_events,
@@ -22,10 +19,12 @@ from agno.os.interfaces.agui.utils import (
     validate_agui_state,
 )
 from agno.team.team import Team
-
 from app.agents.router.router_service import AgentRouterService
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
+
 
 async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[BaseEvent]:
     """Run the contextual Agent, mapping AG-UI input messages to Agno format, and streaming the response in AG-UI format."""
@@ -39,12 +38,14 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
 
         # Look for user_id and file_ids in run_input.forwarded_props
         user_id = None
-        use_general_agent =False
+        use_general_agent = False
+        agent_id = None
         if run_input.forwarded_props and isinstance(run_input.forwarded_props, dict):
             user_id = run_input.forwarded_props.get("user_id")
             file_ids = run_input.forwarded_props.get("file_ids")
             kb_id: Any | None = run_input.forwarded_props.get("kb_id")
             access_token = run_input.forwarded_props.get("access_token")
+            agent_id = run_input.forwarded_props.get("agent_id")
 
             from app.utils.request_context import RequestContext
 
@@ -70,24 +71,24 @@ async def run_agent(agent: Agent, run_input: RunAgentInput) -> AsyncIterator[Bas
                         use_general_agent = True
                         logger.info(f"Added knowledge base hint to user message")
                         break
-        if agent is None:
+
+        current_question = ""
+        if agent_id is None:
             logger.info(f"Agent {run_id} has no agent")
-            # Extract the last user message
-            current_question = ""
             for message in reversed(messages):
                 if hasattr(message, 'role') and message.role == 'user':
                     current_question = getattr(message, 'content', '')
                     break
 
+        agent_router_service = AgentRouterService()
 
-            agent_router_service = AgentRouterService()
-
-            agent = await agent_router_service.route_and_create_agent(
-                user_id=user_id,
-                session_id=run_input.thread_id,
-                user_message=current_question,
-                use_general_agent=use_general_agent
-            )
+        agent = await agent_router_service.route_and_create_agent(
+            user_id=user_id,
+            agent_id=agent_id,
+            session_id=run_input.thread_id,
+            user_message=current_question,
+            use_general_agent=use_general_agent
+        )
 
         # Validating the session state is of the expected type (dict)
         session_state = validate_agui_state(run_input.state, run_input.thread_id)
@@ -166,8 +167,8 @@ def attach_routes(router: APIRouter, agent: Optional[Agent] = None, team: Option
     async def run_agent_agui(run_input: RunAgentInput):
         async def event_generator():
             async for event in run_agent(agent, run_input):
-                    encoded_event = encoder.encode(event)
-                    yield encoded_event
+                encoded_event = encoder.encode(event)
+                yield encoded_event
 
         return StreamingResponse(
             event_generator(),
