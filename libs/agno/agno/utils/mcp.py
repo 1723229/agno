@@ -35,7 +35,7 @@ def get_entrypoint_for_tool(tool: MCPTool, session: ClientSession):
             print(e)
 
         try:
-            self_mcp = ['knowledge_retrieval','data_agent']
+            self_mcp = ['faq_retrieval','knowledge_retrieval','data_agent']
             if tool_name in self_mcp:
                 from app.utils.request_context import RequestContext
                 from app.config.settings import ApexConfig
