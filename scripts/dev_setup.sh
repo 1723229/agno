@@ -31,28 +31,15 @@ print_heading "Installing agno"
 print_info "VIRTUAL_ENV=${VENV_DIR} uv pip install -r ${AGNO_DIR}/requirements.txt"
 VIRTUAL_ENV=${VENV_DIR} uv pip install -r ${AGNO_DIR}/requirements.txt
 
-print_heading "Installing agno in editable mode with tests dependencies"
-# Install dev dependencies first (includes pytest-cov)
+print_heading "Installing agno in editable mode with dev dependencies"
 VIRTUAL_ENV=${VENV_DIR} uv pip install -U -e ${AGNO_DIR}[dev]
-# Then install tests dependencies (includes all models, tools, etc.)
-VIRTUAL_ENV=${VENV_DIR} uv pip install -U -e ${AGNO_DIR}[tests]
-VIRTUAL_ENV=${VENV_DIR} uv pip install yfinance
+#TODO: Improve the dev setup to handle conflicts which results in missing dependencies
 
-VIRTUAL_ENV=${VENV_DIR} uv pip install google-genai==1.52.0
-VIRTUAL_ENV=${VENV_DIR} uv pip install mcp==1.9.2
-VIRTUAL_ENV=${VENV_DIR} uv pip install fastmcp
-VIRTUAL_ENV=${VENV_DIR} uv pip install crawl4ai==0.6.3
-VIRTUAL_ENV=${VENV_DIR} uv pip install firecrawl-py==3.4.0
-VIRTUAL_ENV=${VENV_DIR} uv pip install chonkie[st] chonkie
-VIRTUAL_ENV=${VENV_DIR} uv pip install pylance
-VIRTUAL_ENV=${VENV_DIR} uv pip install psycopg-binary psycopg psycopg2
-
-
-print_heading "Installing agno-os"
+print_heading "Installing agno-infra"
 print_info "VIRTUAL_ENV=${VENV_DIR} uv pip install -r ${AGNO_INFRA_DIR}/requirements.txt"
 VIRTUAL_ENV=${VENV_DIR} uv pip install -r ${AGNO_INFRA_DIR}/requirements.txt
 
-print_heading "Installing agno-os in editable mode with dev dependencies"
+print_heading "Installing agno-infra in editable mode with dev dependencies"
 VIRTUAL_ENV=${VENV_DIR} uv pip install -e ${AGNO_INFRA_DIR}[dev]
 
 print_heading "uv pip list"

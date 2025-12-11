@@ -7,7 +7,7 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel
 
-from agno.exceptions import ModelProviderError
+from agno.exceptions import ModelAuthenticationError, ModelProviderError
 from agno.media import Audio
 from agno.models.base import Model
 from agno.models.message import Message
@@ -102,7 +102,10 @@ class OpenAIChat(Model):
         if not self.api_key:
             self.api_key = getenv("OPENAI_API_KEY")
             if not self.api_key:
-                log_error("OPENAI_API_KEY not set. Please set the OPENAI_API_KEY environment variable.")
+                raise ModelAuthenticationError(
+                    message="OPENAI_API_KEY not set. Please set the OPENAI_API_KEY environment variable.",
+                    model_name=self.name,
+                )
 
         # Define base client params
         base_params = {
@@ -447,6 +450,9 @@ class OpenAIChat(Model):
                 model_name=self.name,
                 model_id=self.id,
             ) from e
+        except ModelAuthenticationError as e:
+            log_error(f"Model authentication error from OpenAI API: {e}")
+            raise e
         except Exception as e:
             log_error(f"Error from OpenAI API: {e}")
             raise ModelProviderError(message=str(e), model_name=self.name, model_id=self.id) from e
@@ -528,6 +534,9 @@ class OpenAIChat(Model):
                 model_name=self.name,
                 model_id=self.id,
             ) from e
+        except ModelAuthenticationError as e:
+            log_error(f"Model authentication error from OpenAI API: {e}")
+            raise e
         except Exception as e:
             log_error(f"Error from OpenAI API: {e}")
             raise ModelProviderError(message=str(e), model_name=self.name, model_id=self.id) from e
@@ -606,6 +615,9 @@ class OpenAIChat(Model):
                 model_name=self.name,
                 model_id=self.id,
             ) from e
+        except ModelAuthenticationError as e:
+            log_error(f"Model authentication error from OpenAI API: {e}")
+            raise e
         except Exception as e:
             log_error(f"Error from OpenAI API: {e}")
             raise ModelProviderError(message=str(e), model_name=self.name, model_id=self.id) from e
@@ -686,6 +698,9 @@ class OpenAIChat(Model):
                 model_name=self.name,
                 model_id=self.id,
             ) from e
+        except ModelAuthenticationError as e:
+            log_error(f"Model authentication error from OpenAI API: {e}")
+            raise e
         except Exception as e:
             log_error(f"Error from OpenAI API: {e}")
             raise ModelProviderError(message=str(e), model_name=self.name, model_id=self.id) from e
@@ -799,6 +814,8 @@ class OpenAIChat(Model):
 
         if hasattr(response_message, "reasoning_content") and response_message.reasoning_content is not None:  # type: ignore
             model_response.reasoning_content = response_message.reasoning_content  # type: ignore
+        elif hasattr(response_message, "reasoning") and response_message.reasoning is not None:  # type: ignore
+            model_response.reasoning_content = response_message.reasoning  # type: ignore
 
         if response.usage is not None:
             model_response.response_usage = self._get_metrics(response.usage)
@@ -831,6 +848,8 @@ class OpenAIChat(Model):
 
                 if hasattr(choice_delta, "reasoning_content") and choice_delta.reasoning_content is not None:
                     model_response.reasoning_content = choice_delta.reasoning_content
+                elif hasattr(choice_delta, "reasoning") and choice_delta.reasoning is not None:
+                    model_response.reasoning_content = choice_delta.reasoning
 
                 # Add audio if present
                 if hasattr(choice_delta, "audio") and choice_delta.audio is not None:

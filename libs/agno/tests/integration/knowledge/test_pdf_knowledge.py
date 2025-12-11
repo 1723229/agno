@@ -6,14 +6,15 @@ import pytest
 from agno.agent import Agent
 from agno.db.sqlite.sqlite import SqliteDb
 from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.chroma import ChromaDb
 from agno.vectordb.lancedb.lance_db import LanceDb
 
 
 @pytest.fixture
 def setup_vector_db():
     """Setup a temporary vector DB for testing."""
-    table_name = f"docx_test_{os.urandom(4).hex()}"
-    vector_db = LanceDb(table_name=table_name, uri="tmp/lancedb")
+    path = f"tmp/chromadb_{os.urandom(4).hex()}"
+    vector_db = ChromaDb(collection="vectors", path=path, persistent_client=True)
     yield vector_db
     # Clean up after test
     vector_db.drop()
