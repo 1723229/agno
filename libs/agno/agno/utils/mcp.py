@@ -76,6 +76,32 @@ def get_entrypoint_for_tool(
             except Exception as e:
                 log_exception(e)
 
+            self_mcp = ['faq_retrieval', 'knowledge_retrieval', 'data_agent']
+            if tool_name in self_mcp:
+                from app.utils.request_context import RequestContext
+                from app.config.settings import ApexConfig
+
+                apex_token = RequestContext.get_access_token()
+                file_ids = RequestContext.get_file_ids()
+                kb_id = RequestContext.get_kb_id()
+
+                # 如果提供了kb_id，优先使用它
+                if "faq" in file_ids:
+                    # 只有在没有kb_id时才使用FAQ的默认ID
+                    file_ids.remove("faq")
+                    if kb_id:
+                        kwargs.update({"kbIds": [kb_id]})
+                        log_debug(f"Using FAQ KB ID from config: {ApexConfig.KB_FAQ_ID}")
+
+                if apex_token:
+                    kwargs.update({"apexToken": apex_token})
+                    log_debug(f"Using access_token from request context")
+
+                if file_ids:
+                    kwargs.update({"folderFileIds": file_ids})
+                    log_debug(f"Using file_ids from request context")
+
+
             log_debug(f"Calling MCP Tool '{tool_name}' with args: {kwargs}")
             result: CallToolResult = await active_session.call_tool(tool_name, kwargs)  # type: ignore
 
@@ -157,6 +183,16 @@ def get_entrypoint_for_tool(
                 else:
                     # Handle other content types
                     response_str += f"[Unsupported content type: {content_item.type}]\n"
+            # Replace <ref> and <image> tags for knowledge_retrieval tool
+            if tool_name == 'knowledge_retrieval':
+                try:
+                    from app.service.base_service import BaseService
+                    base_service = BaseService()
+                    response_str = await base_service.replace_knowledge_tags(response_str)
+                    log_debug("Successfully replaced knowledge tags in response")
+                except Exception as e:
+                    log_exception(f"Failed to replace knowledge tags: {e}")
+                    # Continue with original content if replacement fails
 
             return ToolResult(
                 content=response_str.strip(),
