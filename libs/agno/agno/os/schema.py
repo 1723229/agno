@@ -294,6 +294,7 @@ class AgentSessionDetailSchema(BaseModel):
                     msg_dict['tool_results'] = tool_results
             chat_history.append(msg_dict)
 
+
         return cls(
             user_id=session.user_id,
             agent_session_id=session.session_id,
