@@ -267,6 +267,33 @@ class AgentSessionDetailSchema(BaseModel):
         session_name = get_session_name({**session.to_dict(), "session_type": "agent"})
         created_at = datetime.fromtimestamp(session.created_at, tz=timezone.utc) if session.created_at else None
         updated_at = datetime.fromtimestamp(session.updated_at, tz=timezone.utc) if session.updated_at else created_at
+
+        # Build a mapping from tool_call_id to tool execution result
+        tool_results_map: Dict[str, dict] = {}
+        if session.runs:
+            for run in session.runs:
+                if hasattr(run, 'tools') and run.tools:
+                    for tool in run.tools:
+                        tool_dict = tool.to_dict() if hasattr(tool, 'to_dict') else tool
+                        tool_call_id = tool_dict.get('tool_call_id')
+                        if tool_call_id:
+                            tool_results_map[tool_call_id] = tool_dict
+
+        # Build chat_history with tool_results added to assistant messages
+        chat_history = []
+        for message in session.get_chat_history():
+            msg_dict = message.to_dict()
+            # If this is an assistant message with tool_calls, add tool_results
+            if msg_dict.get('role') == 'assistant' and msg_dict.get('tool_calls'):
+                tool_results = []
+                for tool_call in msg_dict['tool_calls']:
+                    tool_call_id = tool_call.get('id')
+                    if tool_call_id and tool_call_id in tool_results_map:
+                        tool_results.append(tool_results_map[tool_call_id])
+                if tool_results:
+                    msg_dict['tool_results'] = tool_results
+            chat_history.append(msg_dict)
+
         return cls(
             user_id=session.user_id,
             agent_session_id=session.session_id,
@@ -281,7 +308,7 @@ class AgentSessionDetailSchema(BaseModel):
             else None,
             metrics=session.session_data.get("session_metrics", {}) if session.session_data else None,  # type: ignore
             metadata=session.metadata,
-            chat_history=[message.to_dict() for message in session.get_chat_history()],
+            chat_history=chat_history,
             created_at=created_at,
             updated_at=updated_at,
         )
@@ -308,6 +335,33 @@ class TeamSessionDetailSchema(BaseModel):
         session_name = get_session_name({**session_dict, "session_type": "team"})
         created_at = datetime.fromtimestamp(session.created_at, tz=timezone.utc) if session.created_at else None
         updated_at = datetime.fromtimestamp(session.updated_at, tz=timezone.utc) if session.updated_at else created_at
+
+        # Build a mapping from tool_call_id to tool execution result
+        tool_results_map: Dict[str, dict] = {}
+        if session.runs:
+            for run in session.runs:
+                if hasattr(run, 'tools') and run.tools:
+                    for tool in run.tools:
+                        tool_dict = tool.to_dict() if hasattr(tool, 'to_dict') else tool
+                        tool_call_id = tool_dict.get('tool_call_id')
+                        if tool_call_id:
+                            tool_results_map[tool_call_id] = tool_dict
+
+        # Build chat_history with tool_results added to assistant messages
+        chat_history = []
+        for message in session.get_chat_history():
+            msg_dict = message.to_dict()
+            # If this is an assistant message with tool_calls, add tool_results
+            if msg_dict.get('role') == 'assistant' and msg_dict.get('tool_calls'):
+                tool_results = []
+                for tool_call in msg_dict['tool_calls']:
+                    tool_call_id = tool_call.get('id')
+                    if tool_call_id and tool_call_id in tool_results_map:
+                        tool_results.append(tool_results_map[tool_call_id])
+                if tool_results:
+                    msg_dict['tool_results'] = tool_results
+            chat_history.append(msg_dict)
+
         return cls(
             session_id=session.session_id,
             team_id=session.team_id,
@@ -321,7 +375,7 @@ class TeamSessionDetailSchema(BaseModel):
             else None,
             metrics=session.session_data.get("session_metrics", {}) if session.session_data else None,
             metadata=session.metadata,
-            chat_history=[message.to_dict() for message in session.get_chat_history()],
+            chat_history=chat_history,
             created_at=created_at,
             updated_at=updated_at,
         )
