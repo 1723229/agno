@@ -266,6 +266,25 @@ class AgentSessionDetailSchema(BaseModel):
         session_name = get_session_name({**session.to_dict(), "session_type": "agent"})
         created_at = datetime.fromtimestamp(session.created_at, tz=timezone.utc) if session.created_at else None
         updated_at = datetime.fromtimestamp(session.updated_at, tz=timezone.utc) if session.updated_at else created_at
+
+        # Build tool_call_id -> result mapping from runs
+        tool_map = {
+            t["tool_call_id"]: t
+            for run in (session.runs or [])
+            for t in (run.to_dict().get("tools") or [])
+            if t.get("tool_call_id")
+        }
+
+        # Build chat_history with tool_results attached
+        chat_history = []
+        for msg in session.get_chat_history():
+            d = msg.to_dict()
+            if d.get("tool_calls"):
+                results = [tool_map[tc["id"]] for tc in d["tool_calls"] if tc.get("id") in tool_map]
+                if results:
+                    d["tool_results"] = results
+            chat_history.append(d)
+
         return cls(
             user_id=session.user_id,
             agent_session_id=session.session_id,
@@ -280,7 +299,7 @@ class AgentSessionDetailSchema(BaseModel):
             else None,
             metrics=session.session_data.get("session_metrics", {}) if session.session_data else None,  # type: ignore
             metadata=session.metadata,
-            chat_history=[message.to_dict() for message in session.get_chat_history()],
+            chat_history=chat_history,
             created_at=to_utc_datetime(created_at),
             updated_at=to_utc_datetime(updated_at),
         )
@@ -307,6 +326,25 @@ class TeamSessionDetailSchema(BaseModel):
         session_name = get_session_name({**session_dict, "session_type": "team"})
         created_at = datetime.fromtimestamp(session.created_at, tz=timezone.utc) if session.created_at else None
         updated_at = datetime.fromtimestamp(session.updated_at, tz=timezone.utc) if session.updated_at else created_at
+
+        # Build tool_call_id -> result mapping from runs
+        tool_map = {
+            t["tool_call_id"]: t
+            for run in (session.runs or [])
+            for t in (run.to_dict().get("tools") or [])
+            if t.get("tool_call_id")
+        }
+
+        # Build chat_history with tool_results attached
+        chat_history = []
+        for msg in session.get_chat_history():
+            d = msg.to_dict()
+            if d.get("tool_calls"):
+                results = [tool_map[tc["id"]] for tc in d["tool_calls"] if tc.get("id") in tool_map]
+                if results:
+                    d["tool_results"] = results
+            chat_history.append(d)
+
         return cls(
             session_id=session.session_id,
             team_id=session.team_id,
@@ -320,7 +358,7 @@ class TeamSessionDetailSchema(BaseModel):
             else None,
             metrics=session.session_data.get("session_metrics", {}) if session.session_data else None,
             metadata=session.metadata,
-            chat_history=[message.to_dict() for message in session.get_chat_history()],
+            chat_history=chat_history,
             created_at=to_utc_datetime(created_at),
             updated_at=to_utc_datetime(updated_at),
         )
@@ -347,6 +385,7 @@ class WorkflowSessionDetailSchema(BaseModel):
         session_name = get_session_name({**session_dict, "session_type": "workflow"})
         created_at = datetime.fromtimestamp(session.created_at, tz=timezone.utc) if session.created_at else None
         updated_at = datetime.fromtimestamp(session.updated_at, tz=timezone.utc) if session.updated_at else created_at
+
         return cls(
             session_id=session.session_id,
             user_id=session.user_id,
@@ -375,6 +414,7 @@ class RunSchema(BaseModel):
     metrics: Optional[dict] = Field(None, description="Performance and usage metrics")
     messages: Optional[List[dict]] = Field(None, description="Message history for the run")
     tools: Optional[List[dict]] = Field(None, description="Tools used in the run")
+    tool_results: Optional[List[dict]] = Field(None, description="Tool execution results from the run")
     events: Optional[List[dict]] = Field(None, description="Events generated during the run")
     created_at: Optional[datetime] = Field(None, description="Run creation timestamp")
     references: Optional[List[dict]] = Field(None, description="References cited in the run")
@@ -395,6 +435,13 @@ class RunSchema(BaseModel):
         run_input = get_run_input(run_dict)
         run_response_format = "text" if run_dict.get("content_type", "str") == "str" else "json"
 
+        # Get tool_results from the run_dict, which contains tool execution details
+        tool_results = run_dict.get("tool_results")
+        if tool_results is None:
+            # Fallback: if tool_results is not present but tools is, use tools as tool_results
+            tools_data = run_dict.get("tools", [])
+            tool_results = [tool for tool in tools_data] if tools_data else None
+
         return cls(
             run_id=run_dict.get("run_id", ""),
             parent_run_id=run_dict.get("parent_run_id", ""),
@@ -408,6 +455,7 @@ class RunSchema(BaseModel):
             metrics=run_dict.get("metrics", {}),
             messages=[message for message in run_dict.get("messages", [])] if run_dict.get("messages") else None,
             tools=[tool for tool in run_dict.get("tools", [])] if run_dict.get("tools") else None,
+            tool_results=tool_results,
             events=[event for event in run_dict["events"]] if run_dict.get("events") else None,
             references=run_dict.get("references", []),
             citations=run_dict.get("citations", None),
@@ -434,6 +482,7 @@ class TeamRunSchema(BaseModel):
     run_response_format: Optional[str] = Field(None, description="Format of the response (text/json)")
     metrics: Optional[dict] = Field(None, description="Performance and usage metrics")
     tools: Optional[List[dict]] = Field(None, description="Tools used in the run")
+    tool_results: Optional[List[dict]] = Field(None, description="Tool execution results from the run")
     messages: Optional[List[dict]] = Field(None, description="Message history for the run")
     events: Optional[List[dict]] = Field(None, description="Events generated during the run")
     created_at: Optional[datetime] = Field(None, description="Run creation timestamp")
@@ -454,6 +503,14 @@ class TeamRunSchema(BaseModel):
     def from_dict(cls, run_dict: Dict[str, Any]) -> "TeamRunSchema":
         run_input = get_run_input(run_dict)
         run_response_format = "text" if run_dict.get("content_type", "str") == "str" else "json"
+
+        # Get tool_results from the run_dict, which contains tool execution details
+        tool_results = run_dict.get("tool_results")
+        if tool_results is None:
+            # Fallback: if tool_results is not present but tools is, use tools as tool_results
+            tools_data = run_dict.get("tools", [])
+            tool_results = [tool for tool in tools_data] if tools_data else None
+
         return cls(
             run_id=run_dict.get("run_id", ""),
             parent_run_id=run_dict.get("parent_run_id", ""),
@@ -466,6 +523,7 @@ class TeamRunSchema(BaseModel):
             metrics=run_dict.get("metrics", {}),
             messages=[message for message in run_dict.get("messages", [])] if run_dict.get("messages") else None,
             tools=[tool for tool in run_dict.get("tools", [])] if run_dict.get("tools") else None,
+            tool_results=tool_results,
             events=[event for event in run_dict["events"]] if run_dict.get("events") else None,
             created_at=to_utc_datetime(run_dict.get("created_at")),
             references=run_dict.get("references", []),
