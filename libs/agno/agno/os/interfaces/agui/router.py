@@ -32,6 +32,38 @@ from agno.team.team import Team
 logger = logging.getLogger(__name__)
 
 
+async def _verify_access_token(token: Optional[str]) -> bool:
+    """Validate JWT access_token via Redis whitelist + JWT decode + user status check."""
+    if not token:
+        return False
+    try:
+        from app.utils.auth.token_manager import RedisTokenManager
+        from app.utils.auth.auth_core import AuthCore
+
+        token_manager = RedisTokenManager()
+
+        is_valid, error_type = await AuthCore.validate_token_against_redis(token, token_manager)
+        if not is_valid:
+            logger.warning(f"AG-UI token Redis 校验失败: {error_type}")
+            return False
+
+        success, payload, error_type = AuthCore.decode_jwt_safely(token)
+        if not success:
+            logger.warning(f"AG-UI token JWT 解码失败: {error_type}")
+            return False
+
+        user_id = payload["sub"]
+        success, _user, error_type = await AuthCore.load_and_verify_user(user_id)
+        if not success:
+            logger.warning(f"AG-UI 用户校验失败: {error_type}, user_id={user_id}")
+            return False
+
+        return True
+    except Exception as e:
+        logger.warning(f"AG-UI token 校验异常: {e}")
+        return False
+
+
 async def run_agent(agent: Union[Agent, RemoteAgent], run_input: RunAgentInput) -> AsyncIterator[BaseEvent]:
     """Run the contextual Agent, mapping AG-UI input messages to Agno format, and streaming the response in AG-UI format."""
     run_id = run_input.run_id or str(uuid.uuid4())
@@ -179,6 +211,17 @@ def attach_routes(
         name="run_agent",
     )
     async def run_agent_agui(run_input: RunAgentInput):
+        from fastapi.responses import JSONResponse
+
+        forwarded = run_input.forwarded_props or {}
+        token = forwarded.get("access_token") if isinstance(forwarded, dict) else None
+        if not await _verify_access_token(token):
+            logger.warning(f"AG-UI 认证失败: token 无效或已过期, thread={run_input.thread_id}")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "登录已过期，请重新登录"},
+            )
+
         async def event_generator():
             async for event in run_agent(agent, run_input):
                 encoded_event = encoder.encode(event)
